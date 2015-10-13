@@ -1,0 +1,238 @@
+import java.text.SimpleDateFormat
+
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'eclipse'
+apply plugin: 'license'
+apply plugin: 'com.github.johnrengelman.shadow'
+apply plugin: 'checkstyle'
+apply from: 'etc/publish.gradle'
+
+repositories
+{
+	jcenter()
+	maven
+	{ url "http://jenkins.chiorichan.com:8081/artifactory/" }
+	mavenCentral()
+}
+
+buildscript
+{
+	repositories
+	{
+		jcenter()
+		maven
+		{ url "http://jenkins.chiorichan.com:8081/artifactory/" }
+		mavenCentral()
+	}
+	
+	dependencies
+	{
+		classpath 'com.github.jengelman.gradle.plugins:shadow:1.2.1'
+		classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0'
+	}
+}
+
+def gitDescribe()
+{
+	try
+	{
+		// determine git-describe output
+		def stdout = new ByteArrayOutputStream()
+		exec
+		{
+			commandLine 'git', 'describe', '--always'
+			standardOutput = stdout
+		}
+		return stdout.toString().trim()
+	}
+	catch (e)
+	{
+		return "unknown"
+	}
+}
+
+def getVersionNumber()
+{
+	try
+	{
+		Properties props = new Properties()
+		props.load( new FileInputStream( new File( "./src/main/resources/com/chiorichan/build.properties" ) ) )
+		
+		return props.getProperty( "project.version" )
+	}
+	catch ( e )
+	{
+		return 0
+	}
+}
+
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+def rawVersion = getVersionNumber() + '-' + gitDescribe()
+def jenkins_build = System.getenv("BUILD_NUMBER")
+def travis_build = System.getenv("TRAVIS_BUILD_NUMBER")
+def buildNumber = '0'
+
+group = 'com.chiorichan'
+description = 'Chiori-chan\'s File Manager is a Java Based Replacement Linux/Windows Filing Manager that is highly customizable and features plugin capabilities.'
+
+if ( System.getenv("releaseBuild") != null )
+{
+	version = getVersionNumber()
+}
+else
+{
+	if ( jenkins_build != null )
+	{
+		version = rawVersion + '-jenkins-' + jenkins_build
+		buildNumber = jenkins_build
+	}
+	else if ( travis_build != null )
+	{
+		version = rawVersion + '-travis-' + travis_build
+		buildNumber = travis_build
+	}
+	else
+		version = rawVersion + '-dev'
+}
+
+distsDirName = 'dist'
+libsDirName = 'dist'
+
+compileJava
+{ options.encoding = 'UTF-8' }
+
+javadoc
+{ options.encoding = "UTF-8" }
+
+checkstyle
+{
+	configFile = file('etc/checkstyle.xml')
+	configProperties = ["basedir":project.projectDir]
+}
+
+eclipse
+{
+	project
+	{ name = 'FileManager' }
+}
+
+license
+{
+	header rootProject.file('etc/HEADER')
+	ignoreFailures true
+	strictCheck true
+	mapping 'yaml', 'SCRIPT_STYLE'
+	mapping 'yml', 'SCRIPT_STYLE'
+	excludes (['**/*.archive', '**/*.md5', '**/less-rhino-1.7.4.js', '**/coffee-script.js', '**/banner.txt', '**/config.yaml', '**/build.properties'])
+	ext.year = Calendar.getInstance().get(Calendar.YEAR)
+	ext.name = 'Chiori Greene a.k.a. Chiori-chan'
+	ext.email = 'me@chiorichan.com'
+}
+
+subprojects
+{
+	apply plugin: 'java'
+	apply plugin: 'eclipse'
+	
+	repositories
+	{ mavenCentral() }
+	
+	libsDirName = '../../build/dist'
+	
+	artifacts
+	{ archives jar }
+}
+
+dependencies
+{
+	// Swing Libraries
+	compile group: 'org.swinglabs', name: 'swing-layout', version: '1.0.3'
+	compile group: 'org.swinglabs', name: 'swing-worker', version: '1.1'
+	
+	// Used for easy reflections, e.g., find all classes within package for imports
+	compile group: 'org.reflections', name: 'reflections', version: '0.9.9'
+	
+	// Used for Networking HTTP and TCP
+	compile group: 'io.netty', name: 'netty-all', version: '5.0.0.Alpha2'
+	
+	// Used to Make Database Connections
+	compile group: 'mysql', name: 'mysql-connector-java', version: '5.1.35'
+	compile group: 'org.xerial', name: 'sqlite-jdbc', version: '3.8.11.2'
+	compile group: 'com.h2database', name: 'h2', version: '1.4.187'
+	
+	// Used for Programming Convinience
+	compile group: 'com.google.guava', name: 'guava', version: '18.0'
+	compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.3.2'
+	compile group: 'commons-io', name: 'commons-io', version: '2.4'
+	compile group: 'commons-net', name: 'commons-net', version: '3.3'
+	compile group: 'commons-codec', name: 'commons-codec', version: '1.9'
+	
+	// Used to load configs
+	compile group: 'org.yaml', name: 'snakeyaml', version: '1.13'
+	
+	// Used to format Time and Dates
+	compile group: 'joda-time', name: 'joda-time', version: '2.7'
+	compile group: 'org.ocpsoft.prettytime', name: 'prettytime', version: '3.2.5.Final'
+	
+	// Used for serilization within Sites and Autoupdater
+	compile group: 'com.google.code.gson', name: 'gson', version: '2.3'
+	
+	// Used by MavenUtils and some scripts
+	compile group: 'org.apache.httpcomponents', name: 'fluent-hc', version: '4.3.5'
+}
+
+shadowJar
+{
+	include("**/*");
+}
+
+jar
+{
+	manifest
+	{
+		attributes 'Implementation-Title': 'Chiori-chan\'s File Manager'
+		attributes 'Implementation-Version': version
+		attributes 'Implementation-Vendor': 'Chiori Greene a.k.a. Chiori-chan'
+		attributes 'Implementation-Vendor-Id': 'me@chiorichan.com'
+		attributes 'Main-Class': 'com.chiorichan.fm.Loader'
+	}
+}
+
+task sourcesArchive(type: Zip){
+	classifier = 'sources'
+	from sourceSets.main.allSource
+}
+
+task javadocArchive(type: Zip, dependsOn: 'javadoc'){
+	classifier = 'javadoc'
+	from javadoc.destinationDir
+}
+
+task writePropertiesFile {
+	doFirst {
+		SimpleDateFormat sdf = new SimpleDateFormat( "EEE, d MMM yyyy HH:mm:ss Z" )
+		
+		Properties props = new Properties()
+		props.load( new FileInputStream( file( "src/main/resources/com/chiorichan/build.properties" ) ) )
+		props.setProperty("project.builtOn", sdf.format( new Date() ))
+		props.setProperty("project.build", buildNumber)
+		props.setProperty("project.version", version)
+		
+		File f2 = file("build/dist/build.properties")
+		File f3 = file("build/resources/main/com/chiorichan/build.properties")
+		f2.parentFile.mkdirs()
+		f3.parentFile.mkdirs()
+		OutputStream out2 = new FileOutputStream( f2 )
+		OutputStream out3 = new FileOutputStream( f3 )
+		props.store(out2, "Chiori-chan's File Manager Build Properties File - Used by our auto updater and Jenkins build server.")
+		props.store(out3, "Chiori-chan's File Manager Build Properties File - Used by our auto updater and Jenkins build server.")
+	}
+}
+
+jar.dependsOn writePropertiesFile
+
+artifacts
+{ archives shadowJar, sourcesArchive, javadocArchive }
